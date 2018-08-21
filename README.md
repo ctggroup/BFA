@@ -8,11 +8,11 @@ Implementation based on paper by Salakhutdinov and Mih (2008), https://www.cs.to
 
 ## Installation
 To install simply type in the command line:    
-make
+`make`
 
 and run with 
 
-./BayesFactors
+`./BayesFactors`
 
 adding input options that are given below. The option specifying the input matrix file and the options specifying the dimensions of the matrix (no. of rows and columns) are required.
 
@@ -23,10 +23,10 @@ To correctly compile the program you need to have installed the boost, Eigen and
 In ubuntu linux you type the following:   
 
 for boost library:    
-sudo apt-get install libboost-all-dev     
+`sudo apt-get install libboost-all-dev`     
 
 for eigen library:   
-sudo apt install libeigen3-dev   
+`sudo apt install libeigen3-dev`   
 
 for armadillo please install the library from source as described here:   
 http://arma.sourceforge.net/download.html   
