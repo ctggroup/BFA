@@ -1,7 +1,7 @@
 CC = g++
-CXXFLAGS = -g -O3 -lm -lgsl -lboost_program_options -std=c++11
+CXXFLAGS = -g -O3 -lm -lgsl -lboost_program_options -l armadillo -llapack -lblas -std=c++11
 
-BayesC: 
+BayesFactors: 
 	$(CC) -o BayesFactors BayesFactors.cpp $(CXXFLAGS)
 
 clean: 
