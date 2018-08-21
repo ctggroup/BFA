@@ -209,8 +209,8 @@ int main(int argc, char *argv[])
 	desc.add_options()
 ("M", po::value<int>()->required(), "No. of markers")
 ("N", po::value<int>()->required(), "No. of individuals")
-("num_feat", po::value<int>()->required(), "No. of factors")
-("iter", po::value<int>()->default_value(5000), "No. of Gibbs iterations")
+("num_feat", po::value<int>()->default_value(3), "No. of factors")
+("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
 ("input", po::value<std::string>()->required(),"Input filename")
 ("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
 
