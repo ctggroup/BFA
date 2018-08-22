@@ -145,7 +145,7 @@ double sample_hyper(const MatrixXd& w1_M1_sample, const MatrixXd& WI_m, int b0_m
 
 double sample_ind (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const MatrixXd& X,int num_p,int num_feat,const MatrixXd& lambda_u,const VectorXd& mu_u,double alpha)
 {
-//random shuffling of individuals, not really needed (?).
+	//random shuffling of individuals.
 	std::vector<int> I;
 	for (int i=0; i<num_p; ++i) {
 		I.push_back(i);
@@ -154,12 +154,10 @@ double sample_ind (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const M
 	std::random_shuffle(I.begin(), I.end());
 
 	// Gibbs updates over individual latent vectors given hyperparams.
-	// Infer posterior distribution over individual latent vectors (equation 11)
+	// Infer posterior distribution over individual latent vectors (equation 11).
 
 	for (int i=0;i<num_p;i++){
-
 		//observed data row
-
 		VectorXd rr = X.row(I[i]);
 		//equation 12
 		MatrixXd covar = ((alpha*(w1_M1_sample.transpose()*w1_M1_sample)+lambda_u));
@@ -184,7 +182,7 @@ double sample_ind (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const M
 
 double sample_SNP (const MatrixXd& w1_P1_sample, MatrixXd& w1_M1_sample, const MatrixXd& X,int num_p,int num_feat,const MatrixXd& lambda_m,const VectorXd& mu_m,double alpha)
 {
-	//random shuffling of markers, not really needed (?).
+	//random shuffling of markers.
 	std::vector<int> I;
 	for (int i=0; i<num_p; ++i) {
 		I.push_back(i);
@@ -193,19 +191,17 @@ double sample_SNP (const MatrixXd& w1_P1_sample, MatrixXd& w1_M1_sample, const M
 	std::random_shuffle(I.begin(), I.end());
 
 	// Gibbs updates over SNP latent vectors given hyperparams.
-	// Infer posterior distribution over SNP latent vectors (equation 11)
+	// Infer posterior distribution over SNP latent vectors (equation 11).
 
 	for (int i=0;i<num_p;i++){
-
 		//observed data column
-
 		VectorXd rr = X.col(I[i]);
 		//equation 12
 		MatrixXd covar = ((alpha*(w1_P1_sample.transpose()*w1_P1_sample)+lambda_m));
 		covar=covar.inverse();
 		//equation 13
 		VectorXd mean_m = covar * (alpha*w1_P1_sample.transpose()*rr+lambda_m*mu_m);
-		//multivariate normal with mean mean_u and cholesky decomposed variance lam
+		//multivariate normal with mean mean_m and cholesky decomposed variance lam
 		MatrixXd lam = covar.llt().matrixU();
 		lam.transposeInPlace();
 
@@ -225,12 +221,12 @@ int main(int argc, char *argv[])
 
 	po::options_description desc("Options");
 	desc.add_options()
-("M", po::value<int>()->required(), "No. of markers")
-("N", po::value<int>()->required(), "No. of individuals")
-("num_feat", po::value<int>()->default_value(3), "No. of factors")
-("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
-("input", po::value<std::string>()->required(),"Input filename")
-("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
+				("M", po::value<int>()->required(), "No. of markers")
+				("N", po::value<int>()->required(), "No. of individuals")
+				("num_feat", po::value<int>()->default_value(3), "No. of factors")
+				("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
+				("input", po::value<std::string>()->required(),"Input filename")
+				("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
 
 	srand(time(0));
 
@@ -251,7 +247,7 @@ int main(int argc, char *argv[])
 	auto timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
 	cout<<"Started analysis!"<<endl;
 	timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
-    cout << ctime(&timenow) << endl;
+	cout << ctime(&timenow) << endl;
 
 	ifstream f1(input+".X");
 	if (f1){
@@ -266,18 +262,18 @@ int main(int argc, char *argv[])
 		f1.close();
 		cout<<"finished reading matrix X!"<<endl;
 		timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
-	    cout << ctime(&timenow) << endl;
+		cout << ctime(&timenow) << endl;
 	}else{
 		cout<<"the "+input+".X"+" file does not exist/cannot be opened!"<<endl;
 		return 0;
 	}
-	//normalize
+	//normalize matrix X (genotype matrix)
 	RowVectorXd mean = X.colwise().mean();
 	RowVectorXd sd = (X.rowwise() - mean).array().square().colwise().mean();
 	X = (X.rowwise() - mean).array().rowwise() / sd.array();
 
 	//Factor analysis
-	//Initialization can be done with ML estimates. Here its done just by sampling normal deviates
+	//Initialization of latent variables. It can be done with ML estimates. Here its done just by sampling normal deviates.
 	MatrixXd w1_M1_sample(M,num_feat);
 	for (int i = 0; i < M; i++)
 	{
@@ -296,13 +292,13 @@ int main(int argc, char *argv[])
 		}
 
 	}
-
-	MatrixXd WI_m(num_feat,num_feat);
+	//Initialization of hyperparameters
+	MatrixXd WI_u(num_feat,num_feat);
 	VectorXd mu_u(num_feat);
 	MatrixXd lambda_u(num_feat,num_feat);
 	VectorXd mu0_u(num_feat);
 
-	MatrixXd WI_u(num_feat,num_feat);
+	MatrixXd WI_m(num_feat,num_feat);
 	VectorXd mu_m(num_feat);
 	MatrixXd lambda_m(num_feat,num_feat);
 	VectorXd mu0_m(num_feat);
@@ -322,15 +318,53 @@ int main(int argc, char *argv[])
 
 	double alpha=1;
 
-
-	//make folder to put output
+	//create folder to put output
 	int systemRet = system("mkdir -p BayesFactors_out");
 	if(systemRet == -1){
 		cout<<"system command to create folder to place output FAILED!"<<endl;
 	}
 
-	for (int i = 0; i < iter; i++)
+	//declare filestreams for output
+	ofstream file_lambda_u;
+	ofstream file_lambda_m;
+	ofstream file_latentInd;
+	ofstream file_latentSNPs;
+
+	//apending hyper-parameters
+	file_lambda_m.open ("BayesFactors_out/"+output+"_lambda_m.txt", std::ios_base::app);
+	file_lambda_u.open ("BayesFactors_out/"+output+"_lambda_u.txt", std::ios_base::app);
+
+	//begin Gibbs updates
+	for (int i = 0; i < iter+1; i++)
 	{
+		//write out for each iteration the factors
+		file_latentInd.open ("BayesFactors_out/"+output+".iter"+to_string(i)+".factors");
+		file_latentInd << w1_P1_sample << ' ';
+
+		file_latentInd << endl;
+		file_latentInd.close();
+
+		//write out for each iteration the scores
+		file_latentSNPs.open ("BayesFactors_out/"+output+".iter"+to_string(i)+".scores");
+		file_latentSNPs << w1_M1_sample << ' ';
+
+		file_latentSNPs<< endl;
+		file_latentSNPs.close();
+
+		//write-out hyperparameters (covariance matrices)
+		//file_lambda_m << i <<" ";
+		for (int j = 0; j < lambda_m.rows(); j++){
+		file_lambda_m << lambda_m.row(j) << " ";
+		}
+		file_lambda_m<<endl;
+		//file_lambda_u << i<<" ";
+		for (int j = 0; j <lambda_u.rows(); j++){
+		file_lambda_u  << lambda_u.row(j) << " ";
+		}
+		file_lambda_u<<endl;
+
+		//GIBBS UPDATES
+
 		//update SNP hyperparameters
 		sample_hyper(w1_M1_sample,WI_m,b0_m,mu0_m,df_m,mu_m,lambda_m);
 		//update individual hyperparameters
@@ -340,28 +374,13 @@ int main(int argc, char *argv[])
 		//update SNP parameters
 		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,alpha);
 
-		cout<<"#lambda_u#####"<<endl;
-		cout<<lambda_u<<endl;
-		cout<<"#lambda_m#####"<<endl;
-		cout<<lambda_m<<endl;
-		//write each iteration the factors
-		ofstream myfile1;
-		myfile1.open ("BayesFactors_out/"+output+".iter"+to_string(i)+".factors");
-		myfile1 << w1_P1_sample << ' ';
-
-		myfile1 << endl;
-		myfile1.close();
-
-		ofstream myfile2;
-		myfile2.open ("BayesFactors_out/"+output+".iter"+to_string(i)+".scores");
-		myfile2 << w1_M1_sample << ' ';
-
-		myfile2 << endl;
-		myfile2.close();
 	}
+	file_lambda_u.close();
+	file_lambda_m.close();
+
 	cout<<"Finished!"<<endl;
 	timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
-    cout << ctime(&timenow) << endl;
+	cout << ctime(&timenow) << endl;
 
 	return 0;
 }
