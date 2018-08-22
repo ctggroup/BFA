@@ -95,7 +95,7 @@ arma::mat cast_arma(Eigen::MatrixXd& eigen_A)
 //sampling functions
 double sample_hyper(const MatrixXd& w1_M1_sample, const MatrixXd& WI_m, int b0_m, const VectorXd& mu0_m, int df_m,VectorXd& mu_m,MatrixXd& lambda_m)
 {
-	//Sample from SNP hyperparams (equation 14)
+	//Sample from individual or SNP hyperparams (equation 14)
 	int N = w1_M1_sample.rows();
 	int num_feat=w1_M1_sample.cols();
 	VectorXd u_bar(num_feat);
@@ -106,20 +106,20 @@ double sample_hyper(const MatrixXd& w1_M1_sample, const MatrixXd& WI_m, int b0_m
 	S_bar = (w1_M1_sample.transpose()*w1_M1_sample)/N;
 
 	//Gaussian-Wishard sampling
-	//1.sample lambda from wishard distribution (lambda_m)
-	//2.sample mu (mu_m) from multivariate normal distribution with mean mu_0 (mu_temp) and variance (lambda*Lambda)^-1
+	//1.sample lambda from wishard distribution (lambda_m or lambda_u)
+	//2.sample mu (mu_m or mu_u) from multivariate normal distribution with mean mu_0 (mu_temp) and variance (lambda*Lambda)^-1
 
-	//wishard-covariance matrix
+	//Wishard-covariance matrix
 	MatrixXd WI_post(num_feat,num_feat);
 	WI_post = WI_m.inverse() + N*S_bar+((N*b0_m)/(b0_m+N))*((mu0_m - u_bar)*(mu0_m - u_bar).transpose());
 	//WI_post = (WI_post + WI_post.transpose())/2;
 
 	WI_post=WI_post.inverse();
-	//WI_post = (WI_post + WI_post.transpose())/2;
+
 	//Wishard-degrees of freedom
 	int df_mpost = df_m+N;
-	//Wishard draw
-	//mat arma_B = mat(WI_post.data(), WI_post.rows(), WI_post.cols(),false, false);
+	//Wishard draw, using the armadillo function. So I cast to an armadillo matrix, draw wishart then cast back to eigen matrix.
+	//should just code the wishart function.
 	mat arma_lambda =cast_arma(WI_post);
 	lambda_m=cast_eigen(wishrnd(arma_lambda, df_mpost));
 
@@ -145,14 +145,22 @@ double sample_hyper(const MatrixXd& w1_M1_sample, const MatrixXd& WI_m, int b0_m
 
 double sample_ind (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const MatrixXd& X,int num_p,int num_feat,const MatrixXd& lambda_u,const VectorXd& mu_u,double alpha)
 {
+//random shuffling of individuals, not really needed (?).
+	std::vector<int> I;
+	for (int i=0; i<num_p; ++i) {
+		I.push_back(i);
+	}
 
-	// Gibbs updates over individual and SNP latent vectors given hyperparams.
+	std::random_shuffle(I.begin(), I.end());
+
+	// Gibbs updates over individual latent vectors given hyperparams.
 	// Infer posterior distribution over individual latent vectors (equation 11)
 
 	for (int i=0;i<num_p;i++){
-		//observed data column
 
-		VectorXd rr = X.row(i);
+		//observed data row
+
+		VectorXd rr = X.row(I[i]);
 		//equation 12
 		MatrixXd covar = ((alpha*(w1_M1_sample.transpose()*w1_M1_sample)+lambda_u));
 		covar=covar.inverse();
@@ -163,39 +171,49 @@ double sample_ind (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const M
 		lam.transposeInPlace();
 
 		MatrixXd normV(num_feat,1);
-		for (int i=0;i<num_feat;i++){
-			normV(i,0)=rnorm(0,1);
+		for (int j=0;j<num_feat;j++){
+			normV(j,0)=rnorm(0,1);
 		}
-		w1_P1_sample.row(i) = (lam*normV+mean_u).transpose();
+
+		w1_P1_sample.row(I[i]) = (lam*normV+mean_u).transpose();
+
 	}
 
 	return 0;
 }
 
-double sample_SNP (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const MatrixXd& X,int num_p,int num_feat,const MatrixXd& lambda_u,const VectorXd& mu_u,double alpha)
+double sample_SNP (const MatrixXd& w1_P1_sample, MatrixXd& w1_M1_sample, const MatrixXd& X,int num_p,int num_feat,const MatrixXd& lambda_m,const VectorXd& mu_m,double alpha)
 {
+	//random shuffling of markers, not really needed (?).
+	std::vector<int> I;
+	for (int i=0; i<num_p; ++i) {
+		I.push_back(i);
+	}
 
-	// Gibbs updates over individual and SNP latent vectors given hyperparams.
-	// Infer posterior distribution over individual latent vectors (equation 11)
+	std::random_shuffle(I.begin(), I.end());
+
+	// Gibbs updates over SNP latent vectors given hyperparams.
+	// Infer posterior distribution over SNP latent vectors (equation 11)
 
 	for (int i=0;i<num_p;i++){
+
 		//observed data column
 
-		VectorXd rr = X.col(i);
+		VectorXd rr = X.col(I[i]);
 		//equation 12
-		MatrixXd covar = ((alpha*(w1_M1_sample.transpose()*w1_M1_sample)+lambda_u));
+		MatrixXd covar = ((alpha*(w1_P1_sample.transpose()*w1_P1_sample)+lambda_m));
 		covar=covar.inverse();
 		//equation 13
-		VectorXd mean_u = covar * (alpha*w1_M1_sample.transpose()*rr+lambda_u*mu_u);
+		VectorXd mean_m = covar * (alpha*w1_P1_sample.transpose()*rr+lambda_m*mu_m);
 		//multivariate normal with mean mean_u and cholesky decomposed variance lam
 		MatrixXd lam = covar.llt().matrixU();
 		lam.transposeInPlace();
 
 		MatrixXd normV(num_feat,1);
-		for (int i=0;i<num_feat;i++){
-			normV(i,0)=rnorm(0,1);
+		for (int j=0;j<num_feat;j++){
+			normV(j,0)=rnorm(0,1);
 		}
-		w1_P1_sample.row(i) = (lam*normV+mean_u).transpose();
+		w1_M1_sample.row(I[i]) = (lam*normV+mean_m).transpose();
 	}
 
 	return 0;
@@ -214,6 +232,8 @@ int main(int argc, char *argv[])
 ("input", po::value<std::string>()->required(),"Input filename")
 ("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
 
+	srand(time(0));
+
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc,argv,desc),vm);
 	po::notify(vm);
@@ -228,6 +248,10 @@ int main(int argc, char *argv[])
 	MatrixXd X(N,M);
 
 	int i,j,k,l,m=0;
+	auto timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
+	cout<<"Started analysis!"<<endl;
+	timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    cout << ctime(&timenow) << endl;
 
 	ifstream f1(input+".X");
 	if (f1){
@@ -241,6 +265,8 @@ int main(int argc, char *argv[])
 		}
 		f1.close();
 		cout<<"finished reading matrix X!"<<endl;
+		timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
+	    cout << ctime(&timenow) << endl;
 	}else{
 		cout<<"the "+input+".X"+" file does not exist/cannot be opened!"<<endl;
 		return 0;
@@ -314,6 +340,10 @@ int main(int argc, char *argv[])
 		//update SNP parameters
 		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,alpha);
 
+		cout<<"#lambda_u#####"<<endl;
+		cout<<lambda_u<<endl;
+		cout<<"#lambda_m#####"<<endl;
+		cout<<lambda_m<<endl;
 		//write each iteration the factors
 		ofstream myfile1;
 		myfile1.open ("BayesFactors_out/"+output+".iter"+to_string(i)+".factors");
@@ -329,5 +359,9 @@ int main(int argc, char *argv[])
 		myfile2 << endl;
 		myfile2.close();
 	}
+	cout<<"Finished!"<<endl;
+	timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    cout << ctime(&timenow) << endl;
+
 	return 0;
 }
