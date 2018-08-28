@@ -34,13 +34,13 @@ int main(int argc, char *argv[])
 
 	po::options_description desc("Options");
 	desc.add_options()
-				("M", po::value<int>()->required(), "No. of markers")
-				("N", po::value<int>()->required(), "No. of individuals")
-				("num_feat", po::value<int>()->default_value(3), "No. of factors")
-				("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
-				("burnin", po::value<int>()->default_value(10), "No. burnin iterations")
-				("input", po::value<std::string>()->required(),"Input filename")
-				("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
+						("M", po::value<int>()->required(), "No. of markers")
+						("N", po::value<int>()->required(), "No. of individuals")
+						("num_feat", po::value<int>()->default_value(3), "No. of factors")
+						("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
+						("burnin", po::value<int>()->default_value(10), "No. burnin iterations")
+						("input", po::value<std::string>()->required(),"Input filename")
+						("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
 
 	srand(time(0));
 
@@ -176,7 +176,7 @@ int main(int argc, char *argv[])
 	file_lambda_u.open ("BayesFactors_out/"+output+"_lambda_u.txt", std::ios_base::app);
 	file_mu_m.open ("BayesFactors_out/"+output+"_mu_m.txt", std::ios_base::app);
 	file_mu_u.open ("BayesFactors_out/"+output+"_mu_u.txt", std::ios_base::app);
-cout<<"Starting burning "<<burnin<<" iterations"<<endl;
+	cout<<"Starting burning "<<burnin<<" iterations"<<endl;
 	//Burnin iterations
 	for (int i = 0; i < burnin; i++)
 	{
@@ -224,19 +224,19 @@ cout<<"Starting burning "<<burnin<<" iterations"<<endl;
 		//write-out hyperparameters (covariance matrices)
 		//file_lambda_m << i <<" ";
 		for (int j = 0; j < lambda_m.rows(); j++){
-		file_lambda_m << lambda_m.row(j) << " ";
+			file_lambda_m << lambda_m.row(j) << " ";
 		}
 		file_lambda_m<<endl;
 		//file_lambda_u << i<<" ";
 		for (int j = 0; j <lambda_u.rows(); j++){
-		file_lambda_u  << lambda_u.row(j) << " ";
+			file_lambda_u  << lambda_u.row(j) << " ";
 		}
 		file_lambda_u<<endl;
 
 		//write-out hyperparameters (means)
 		for (int j = 0; j <num_feat; j++){
-		file_mu_m<<mu_m[j]<<" ";
-		file_mu_u<<mu_u[j]<<" ";
+			file_mu_m<<mu_m[j]<<" ";
+			file_mu_u<<mu_u[j]<<" ";
 		}
 		file_mu_m<<endl;
 		file_mu_u<<endl;

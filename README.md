@@ -38,7 +38,8 @@ Possible options:
 
 --M : No. of markers (required)    
 --N : No. of individuals (required)   
---iter : No. of Gibbs sampling iterations (Default:100)   
+--iter : No. of Gibbs sampling iterations (Default:100) 
+--burnin: No. burnin iterations (Default: 10) 
 --num_feat : No. of estimated factors (Default:3)   
 --input : input tag for genotype matrix file (required). The genotype matrix is assumed to have the suffix ".X" after the tag provided with input.   
 --output : Results of the gibbs sampler are outputed using the tag provided here (Default:"BayesFactors_out"). The program will create a folder with this tag and then output the estimated factors and scores in that folder for every Gibbs iteration.   
