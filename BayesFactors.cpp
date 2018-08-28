@@ -38,6 +38,7 @@ int main(int argc, char *argv[])
 				("N", po::value<int>()->required(), "No. of individuals")
 				("num_feat", po::value<int>()->default_value(3), "No. of factors")
 				("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
+				("burnin", po::value<int>()->default_value(10), "No. burnin iterations")
 				("input", po::value<std::string>()->required(),"Input filename")
 				("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
 
@@ -51,6 +52,7 @@ int main(int argc, char *argv[])
 	int N=vm["N"].as<int>();
 	int num_feat=vm["num_feat"].as<int>();
 	int iter=vm["iter"].as<int>();
+	int burnin=vm["burnin"].as<int>();
 	string input=vm["input"].as<string>();
 	string output=vm["out"].as<string>();
 
@@ -83,7 +85,7 @@ int main(int argc, char *argv[])
 
 	//normalize matrix X (genotype matrix)
 	RowVectorXd mean = X.colwise().mean();
-	RowVectorXd sd = (X.rowwise() - mean).array().square().colwise().mean();
+	RowVectorXd sd = ((X.rowwise() - mean).array().square().colwise().sum() / (X.rows() - 1)).sqrt();
 	X = (X.rowwise() - mean).array().rowwise() / sd.array();
 
 	//Factor analysis
@@ -106,6 +108,7 @@ int main(int argc, char *argv[])
 		}
 
 	}
+
 	//Initialization of hyperparameters
 	MatrixXd WI_u(num_feat,num_feat);
 	VectorXd mu_u(num_feat);
@@ -127,11 +130,15 @@ int main(int argc, char *argv[])
 	lambda_u.setIdentity();
 	mu0_u.setZero();
 
-	int b0_m=2;int df_m=num_feat;
-	int b0_u=2;int df_u=num_feat;
+	double b0_m=0.001;int df_m=num_feat;
+	double b0_u=0.001;int df_u=num_feat;
 
-	double alpha=1;
+	//residual variance
 
+	MatrixXd epsilon_t(N,M);
+	epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
+
+	double sigma2_e=sample_residual_variance_gamma(epsilon_t);
 	//create folder to put output
 	int systemRet = system("mkdir -p BayesFactors_out");
 	if(systemRet == -1){
@@ -141,31 +148,74 @@ int main(int argc, char *argv[])
 	//declare filestreams for output
 	ofstream file_lambda_u;
 	ofstream file_lambda_m;
+	ofstream file_mu_u;
+	ofstream file_mu_m;
 	ofstream file_latentInd;
 	ofstream file_latentSNPs;
+	ofstream file_sigma2_e;
 
+	ofstream file_ElatentInd;
+	ofstream file_ElatentSNPs;
 	//clear files for hyper-parameters
 	file_lambda_m.open ("BayesFactors_out/"+output+"_lambda_m.txt");
 	file_lambda_u.open ("BayesFactors_out/"+output+"_lambda_u.txt");
+	file_mu_m.open ("BayesFactors_out/"+output+"_mu_m.txt");
+	file_mu_u.open ("BayesFactors_out/"+output+"_mu_u.txt");
+	file_sigma2_e.open ("BayesFactors_out/"+output+"_sigma2_e.txt");
+
 	file_lambda_u.close();
 	file_lambda_m.close();
+	file_mu_u.close();
+	file_mu_m.close();
+	file_sigma2_e.close();
+
+	//appending sigma2_e
+	file_sigma2_e.open ("BayesFactors_out/"+output+"_sigma2_e.txt", std::ios_base::app);
 	//appending hyper-parameters
 	file_lambda_m.open ("BayesFactors_out/"+output+"_lambda_m.txt", std::ios_base::app);
 	file_lambda_u.open ("BayesFactors_out/"+output+"_lambda_u.txt", std::ios_base::app);
+	file_mu_m.open ("BayesFactors_out/"+output+"_mu_m.txt", std::ios_base::app);
+	file_mu_u.open ("BayesFactors_out/"+output+"_mu_u.txt", std::ios_base::app);
+cout<<"Starting burning "<<burnin<<" iterations"<<endl;
+	//Burnin iterations
+	for (int i = 0; i < burnin; i++)
+	{
 
-	//begin Gibbs updates
-	for (int i = 0; i < iter+1; i++)
+		//update SNP hyperparameters
+		sample_hyper(w1_M1_sample,WI_m,b0_m,mu0_m,df_m,mu_m,lambda_m);
+		//update individual hyperparameters
+		sample_hyper(w1_P1_sample,WI_u,b0_u,mu0_u,df_u,mu_u,lambda_u);
+		//update individual parameters
+		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e);
+		//update SNP parameters
+		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,sigma2_e);
+		//update residual variance
+		sigma2_e=sample_residual_variance_gamma(epsilon_t);
+
+		epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
+
+	}
+	cout<<"Finished burnin, starting sampling "<<iter<<" iterations" <<endl;
+	//Running means of latent variables
+	MatrixXd Ew1_M1_sample(M,num_feat);
+	MatrixXd Ew1_P1_sample(N,num_feat);
+
+	Ew1_M1_sample=w1_M1_sample;
+	Ew1_P1_sample=w1_P1_sample;
+
+	//sampling iterations
+	for (int i = 0; i < iter; i++)
 	{
 
 		//write out for each iteration the factors
-		file_latentInd.open ("BayesFactors_out/"+output+".iter"+to_string(i)+".factors");
+		file_latentInd.open ("BayesFactors_out/"+output+".iter"+to_string(i+1)+".factors");
 		file_latentInd << w1_P1_sample << ' ';
 
 		file_latentInd << endl;
 		file_latentInd.close();
 
 		//write out for each iteration the scores
-		file_latentSNPs.open ("BayesFactors_out/"+output+".iter"+to_string(i)+".scores");
+		file_latentSNPs.open ("BayesFactors_out/"+output+".iter"+to_string(i+1)+".scores");
 		file_latentSNPs << w1_M1_sample << ' ';
 
 		file_latentSNPs<< endl;
@@ -183,6 +233,17 @@ int main(int argc, char *argv[])
 		}
 		file_lambda_u<<endl;
 
+		//write-out hyperparameters (means)
+		for (int j = 0; j <num_feat; j++){
+		file_mu_m<<mu_m[j]<<" ";
+		file_mu_u<<mu_u[j]<<" ";
+		}
+		file_mu_m<<endl;
+		file_mu_u<<endl;
+
+		//write-out residual variance
+		file_sigma2_e<<sigma2_e<<endl;
+
 		//GIBBS UPDATES
 
 		//update SNP hyperparameters
@@ -190,13 +251,35 @@ int main(int argc, char *argv[])
 		//update individual hyperparameters
 		sample_hyper(w1_P1_sample,WI_u,b0_u,mu0_u,df_u,mu_u,lambda_u);
 		//update individual parameters
-		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,alpha);
+		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e);
 		//update SNP parameters
-		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,alpha);
+		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,sigma2_e);
+		//update residual variance
+		sigma2_e=sample_residual_variance_gamma(epsilon_t);
+
+		epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
+
+		//running average has +1 value (1 from burnin
+		Ew1_M1_sample=Ew1_M1_sample+(w1_M1_sample-Ew1_M1_sample)/(i+2);
+		Ew1_P1_sample=Ew1_P1_sample+(w1_P1_sample-Ew1_P1_sample)/(i+2);
 
 	}
+	//write-out means for latent variables
+	file_ElatentInd.open ("BayesFactors_out/"+output+"_Efactors.txt");
+	file_ElatentSNPs.open ("BayesFactors_out/"+output+"_Escores.txt");
+	file_ElatentInd<<Ew1_P1_sample<<endl;
+	file_ElatentSNPs<<Ew1_M1_sample<<endl;
+	file_ElatentInd.close();
+	file_ElatentSNPs.close();
+
 	file_lambda_u.close();
 	file_lambda_m.close();
+
+	file_mu_u.close();
+	file_mu_m.close();
+
+	file_sigma2_e.close();
+
 
 	cout<<"Finished!"<<endl;
 	timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());

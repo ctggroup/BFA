@@ -24,6 +24,14 @@ double rnorm(double mean, double sd)
 	return dist(gen);
 }
 
+double rgamma(double alpha, double beta)
+{
+
+	boost::math::gamma_distribution<> dist(alpha, beta);
+	double q = quantile(dist, runif(0,1));
+
+	return(q);
+}
 
 double rbeta(double alpha, double beta)
 {
@@ -65,9 +73,8 @@ arma::mat cast_arma(Eigen::MatrixXd& eigen_A)
 }
 
 
-
 //sampling functions
-double sample_hyper(const MatrixXd& w1_M1_sample, const MatrixXd& WI_m, int b0_m, const VectorXd& mu0_m, int df_m,VectorXd& mu_m,MatrixXd& lambda_m)
+double sample_hyper(const MatrixXd& w1_M1_sample, const MatrixXd& WI_m, double b0_m, const VectorXd& mu0_m, int df_m,VectorXd& mu_m,MatrixXd& lambda_m)
 {
 	//Sample from individual or SNP hyperparams (equation 14)
 	int N = w1_M1_sample.rows();
@@ -188,3 +195,14 @@ double sample_SNP (const MatrixXd& w1_P1_sample, MatrixXd& w1_M1_sample, const M
 
 	return 0;
 }
+
+
+double sample_residual_variance_gamma(const MatrixXd& epsilon)
+{
+	int N=epsilon.rows()*epsilon.cols();
+	double res=epsilon.squaredNorm();
+	double sigma2=1/rgamma((N-1)/2,1/(0.5*res));
+	//cout<<N<<"\t"<<res<<"\t"<<sigma2<<endl;
+	return sigma2;
+}
+
