@@ -36,15 +36,22 @@ http://arma.sourceforge.net/download.html
 
 Possible options:   
 
+### Required   
 --M : No. of markers (required)    
 --N : No. of individuals (required)   
---iter : No. of Gibbs sampling iterations (Default:100)    
+--input : Input tag for genotype matrix file (required). The genotype matrix is assumed to have the suffix ".X" after the tag provided with input.   
+
+### Optional   
+--iter : No. of Gibbs sampling iterations (Default:100)   
 --burnin: No. burnin iterations (Default: 10)   
 --num_feat : No. of estimated factors (Default:3)   
---input : input tag for genotype matrix file (required). The genotype matrix is assumed to have the suffix ".X" after the tag provided with input.   
+--scale : Flag to substract mean and divide by standard deviation for each column of the input matrix before analysis. (Default:1)    
 --output : Results of the gibbs sampler are outputed using the tag provided here (Default:"BayesFactors_out"). The program will create a folder with this tag and then output the estimated factors and scores in that folder for every Gibbs iteration.   
+--b0_m : Shrinkage constant for prior of column hyper-parameters (Default: 2)
+--b0_u : Shrinkage constant for prior of row hyper-parameters (Default: 2)
 
 ## Examples   
 
-./BayesFactors --input inputfile --N 3000 --M 1269 --iter 100 --num_feat 5 --burnin 100   
+./BayesFactors --input inputfile --N 3000 --M 1269 --burnin 100 --iter 100 --num_feat 5 --scale 0
 
+The genotype matrix is assumed to have the suffix ".X". So in this example the program expects a file called inputfile.X to read in the genotype matrix.  
