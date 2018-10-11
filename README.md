@@ -44,3 +44,7 @@ Possible options:
 --input : input tag for genotype matrix file (required). The genotype matrix is assumed to have the suffix ".X" after the tag provided with input.   
 --output : Results of the gibbs sampler are outputed using the tag provided here (Default:"BayesFactors_out"). The program will create a folder with this tag and then output the estimated factors and scores in that folder for every Gibbs iteration.   
 
+## Examples   
+
+./BayesFactors --input inputfile --N 3000 --M 1269 --iter 100 --num_feat 5 --burnin 100   
+

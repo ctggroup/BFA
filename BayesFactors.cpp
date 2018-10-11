@@ -34,13 +34,16 @@ int main(int argc, char *argv[])
 
 	po::options_description desc("Options");
 	desc.add_options()
-						("M", po::value<int>()->required(), "No. of markers")
-						("N", po::value<int>()->required(), "No. of individuals")
-						("num_feat", po::value<int>()->default_value(3), "No. of factors")
-						("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
-						("burnin", po::value<int>()->default_value(10), "No. burnin iterations")
-						("input", po::value<std::string>()->required(),"Input filename")
-						("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
+								("M", po::value<int>()->required(), "No. of markers")
+								("N", po::value<int>()->required(), "No. of individuals")
+								("num_feat", po::value<int>()->default_value(3), "No. of factors")
+								("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
+								("scale", po::value<int>()->default_value(1), "Scaling")
+								("burnin", po::value<int>()->default_value(10), "No. burnin iterations")
+								("b0_m", po::value<double>()->default_value(2), "b0_m")
+								("b0_u", po::value<double>()->default_value(2), "b0_u")
+								("input", po::value<std::string>()->required(),"Input filename")
+								("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
 
 	srand(time(0));
 
@@ -53,6 +56,9 @@ int main(int argc, char *argv[])
 	int num_feat=vm["num_feat"].as<int>();
 	int iter=vm["iter"].as<int>();
 	int burnin=vm["burnin"].as<int>();
+	int scale=vm["scale"].as<int>();
+	double b0_m=vm["b0_m"].as<double>();
+	double b0_u=vm["b0_u"].as<double>();
 	string input=vm["input"].as<string>();
 	string output=vm["out"].as<string>();
 
@@ -82,12 +88,12 @@ int main(int argc, char *argv[])
 		cout<<"the "+input+".X"+" file does not exist/cannot be opened!"<<endl;
 		return 0;
 	}
-
-	//normalize matrix X (genotype matrix)
-	RowVectorXd mean = X.colwise().mean();
-	RowVectorXd sd = ((X.rowwise() - mean).array().square().colwise().sum() / (X.rows() - 1)).sqrt();
-	X = (X.rowwise() - mean).array().rowwise() / sd.array();
-
+	if (scale==1){
+		//scale matrix X (genotype matrix)
+		RowVectorXd mean = X.colwise().mean();
+		RowVectorXd sd = ((X.rowwise() - mean).array().square().colwise().sum() / (X.rows() - 1)).sqrt();
+		X = (X.rowwise() - mean).array().rowwise() / sd.array();
+	}
 	//Factor analysis
 	//Initialization of latent variables. It can be done with ML estimates. Here its done just by sampling normal deviates.
 	MatrixXd w1_M1_sample(M,num_feat);
@@ -121,24 +127,30 @@ int main(int argc, char *argv[])
 	VectorXd mu0_m(num_feat);
 
 	WI_m.setIdentity();
-	mu_m.setZero();
 	lambda_m.setIdentity();
-	mu0_m.setZero();
-
-	WI_u.setIdentity();
-	mu_u.setZero();
 	lambda_u.setIdentity();
+	WI_u.setIdentity();
+
+	mu_m.setZero();
+	mu0_m.setZero();
+	mu_u.setZero();
 	mu0_u.setZero();
 
-	double b0_m=0.001;int df_m=num_feat;
-	double b0_u=0.001;int df_u=num_feat;
+
+	int df_m=num_feat;
+	int df_u=num_feat;
 
 	//residual variance
 
 	MatrixXd epsilon_t(N,M);
+	double Xm=X.mean();
 	epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
-
+	//double sigma2_e=2;
 	double sigma2_e=sample_residual_variance_gamma(epsilon_t);
+	VectorXd sigma2_e_rowvec(N);
+	sample_residual_row_variance_gamma(epsilon_t, sigma2_e_rowvec);
+
+
 	//create folder to put output
 	int systemRet = system("mkdir -p BayesFactors_out");
 	if(systemRet == -1){
@@ -153,6 +165,7 @@ int main(int argc, char *argv[])
 	ofstream file_latentInd;
 	ofstream file_latentSNPs;
 	ofstream file_sigma2_e;
+	ofstream file_sigma2_e_rowvec;
 
 	ofstream file_ElatentInd;
 	ofstream file_ElatentSNPs;
@@ -162,15 +175,18 @@ int main(int argc, char *argv[])
 	file_mu_m.open ("BayesFactors_out/"+output+"_mu_m.txt");
 	file_mu_u.open ("BayesFactors_out/"+output+"_mu_u.txt");
 	file_sigma2_e.open ("BayesFactors_out/"+output+"_sigma2_e.txt");
+	file_sigma2_e_rowvec.open ("BayesFactors_out/"+output+"_sigma2_e_rowvec.txt");
 
 	file_lambda_u.close();
 	file_lambda_m.close();
 	file_mu_u.close();
 	file_mu_m.close();
 	file_sigma2_e.close();
+	file_sigma2_e_rowvec.close();
 
 	//appending sigma2_e
 	file_sigma2_e.open ("BayesFactors_out/"+output+"_sigma2_e.txt", std::ios_base::app);
+	file_sigma2_e_rowvec.open ("BayesFactors_out/"+output+"_sigma2_e_rowvec.txt", std::ios_base::app);
 	//appending hyper-parameters
 	file_lambda_m.open ("BayesFactors_out/"+output+"_lambda_m.txt", std::ios_base::app);
 	file_lambda_u.open ("BayesFactors_out/"+output+"_lambda_u.txt", std::ios_base::app);
@@ -180,19 +196,22 @@ int main(int argc, char *argv[])
 	//Burnin iterations
 	for (int i = 0; i < burnin; i++)
 	{
+		//update residual variance
+		epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
+		sigma2_e=sample_residual_variance_gamma(epsilon_t);
+		sample_residual_row_variance_gamma(epsilon_t, sigma2_e_rowvec);
 
 		//update SNP hyperparameters
 		sample_hyper(w1_M1_sample,WI_m,b0_m,mu0_m,df_m,mu_m,lambda_m);
 		//update individual hyperparameters
 		sample_hyper(w1_P1_sample,WI_u,b0_u,mu0_u,df_u,mu_u,lambda_u);
 		//update individual parameters
-		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e);
+		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e_rowvec);
 		//update SNP parameters
 		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,sigma2_e);
-		//update residual variance
-		sigma2_e=sample_residual_variance_gamma(epsilon_t);
+		//update rows and columns together
+		//sample_ind_SNP (w1_M1_sample,w1_P1_sample, X,N,M,num_feat,lambda_u,mu_u,lambda_m,mu_m,sigma2_e);
 
-		epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
 
 	}
 	cout<<"Finished burnin, starting sampling "<<iter<<" iterations" <<endl;
@@ -206,6 +225,7 @@ int main(int argc, char *argv[])
 	//sampling iterations
 	for (int i = 0; i < iter; i++)
 	{
+		//cout<<iter<<"\t"<<i<<endl;
 
 		//write out for each iteration the factors
 		file_latentInd.open ("BayesFactors_out/"+output+".iter"+to_string(i+1)+".factors");
@@ -244,22 +264,29 @@ int main(int argc, char *argv[])
 		//write-out residual variance
 		file_sigma2_e<<sigma2_e<<endl;
 
+		for (int j = 0; j <sigma2_e_rowvec.rows(); j++){
+			file_sigma2_e_rowvec  << sigma2_e_rowvec.row(j) << " ";
+		}
+		file_sigma2_e_rowvec<<endl;
+
+
 		//GIBBS UPDATES
+		//update residual variance
+		epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
+		sigma2_e=sample_residual_variance_gamma(epsilon_t);
+		sample_residual_row_variance_gamma(epsilon_t, sigma2_e_rowvec);
 
 		//update SNP hyperparameters
 		sample_hyper(w1_M1_sample,WI_m,b0_m,mu0_m,df_m,mu_m,lambda_m);
 		//update individual hyperparameters
 		sample_hyper(w1_P1_sample,WI_u,b0_u,mu0_u,df_u,mu_u,lambda_u);
+
 		//update individual parameters
-		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e);
+		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e_rowvec);
 		//update SNP parameters
 		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,sigma2_e);
-		//update residual variance
-		sigma2_e=sample_residual_variance_gamma(epsilon_t);
 
-		epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
-
-		//running average has +1 value (1 from burnin
+		//running average has +1 value (1 from burnin)
 		Ew1_M1_sample=Ew1_M1_sample+(w1_M1_sample-Ew1_M1_sample)/(i+2);
 		Ew1_P1_sample=Ew1_P1_sample+(w1_P1_sample-Ew1_P1_sample)/(i+2);
 
@@ -279,6 +306,7 @@ int main(int argc, char *argv[])
 	file_mu_m.close();
 
 	file_sigma2_e.close();
+	file_sigma2_e_rowvec.close();
 
 
 	cout<<"Finished!"<<endl;
