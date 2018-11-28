@@ -122,49 +122,11 @@ double sample_hyper(const MatrixXd& w1_M1_sample, const MatrixXd& WI_m, double b
 	}
 
 	mu_m = lam*normV+mu_temp;
-/*
-	if (N<3000){
-		cout<<"u_bar"<<endl;
-		cout<<u_bar<<endl;
-
-		cout<<"S_bar"<<endl;
-		cout<<S_bar<<endl;
-
-		cout<<"WIPOST"<<endl;
-		cout<<WI_post<<endl;
-
-		cout<<"lam"<<endl;
-		cout<<lam<<endl;
-
-		cout<<"lambda_m"<<endl;
-		cout<<lambda_m<<endl;
-
-		cout<<"mu_m"<<endl;
-		cout<<mu_m<<endl;
-
-
-		cout<<"normV"<<endl;
-		cout<<normV<<endl;
-		cout<<"mu_temp"<<endl;
-		cout<<mu_temp<<endl;
-
-	}else{
-
-		cout<<"S_bar_ind"<<endl;
-		cout<<S_bar<<endl;
-		cout<<"lam-ind"<<endl;
-		cout<<lam<<endl;
-		cout<<"lambda_u"<<endl;
-		cout<<lambda_m<<endl;
-		cout<<"mu_temp_ind"<<endl;
-		cout<<mu_temp<<endl;
-	}
-*/
 
 	return 0;
 }
 
-double sample_ind (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const MatrixXd& X,int num_p,int num_feat,const MatrixXd& lambda_u,const VectorXd& mu_u,const VectorXd& alpha)
+double sample_ind (double Xglobalmean,const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const MatrixXd& X,int num_p,int num_feat,const MatrixXd& lambda_u,const VectorXd& mu_u,const VectorXd& alpha)
 {
 	//random shuffling of individuals.
 	std::vector<int> I;
@@ -176,15 +138,17 @@ double sample_ind (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const M
 
 	// Gibbs updates over individual latent vectors given hyperparams.
 	// Infer posterior distribution over individual latent vectors (equation 11).
+	MatrixXd covarprod = w1_P1_sample.transpose()*w1_P1_sample;
+	MatrixXd lambda_mu_prod=lambda_u*mu_u;
 
 	for (int i=0;i<num_p;i++){
 		//observed data row
-		VectorXd rr = X.row(I[i]);
+		VectorXd rr = X.row(I[i]).array();
 		//equation 12
-		MatrixXd covar = ((alpha[i]*(w1_M1_sample.transpose()*w1_M1_sample)+lambda_u));
+		MatrixXd covar = alpha[i]*covarprod+lambda_u;
 		covar=covar.inverse();
 		//equation 13
-		VectorXd mean_u = covar * (alpha[i]*(w1_M1_sample.transpose()*rr)+lambda_u*mu_u);
+		VectorXd mean_u = covar * (alpha[i]*(w1_M1_sample.transpose()*rr)+lambda_mu_prod);
 		//multivariate normal with mean mean_u and cholesky decomposed variance lam
 		MatrixXd lam = covar.llt().matrixU();
 		lam.transposeInPlace();
@@ -201,9 +165,42 @@ double sample_ind (const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample, const M
 	return 0;
 }
 
-double sample_SNP (const MatrixXd& w1_P1_sample, MatrixXd& w1_M1_sample, const MatrixXd& X,int num_p,int num_feat,const MatrixXd& lambda_m,const VectorXd& mu_m,double alpha)
+double sample_SNP (double Xglobalmean,const MatrixXd& w1_P1_sample, MatrixXd& w1_M1_sample, const MatrixXd& X,int num_m,int num_feat,const MatrixXd& lambda_m,const VectorXd& mu_m,double alpha)
 {
 	//random shuffling of markers.
+	std::vector<int> I;
+	for (int i=0; i<num_m; ++i) {
+		I.push_back(i);
+	}
+
+	std::random_shuffle(I.begin(), I.end());
+	//equation 12
+	MatrixXd covar = ((alpha*(w1_P1_sample.transpose()*w1_P1_sample)+lambda_m));
+	covar=covar.inverse();
+	MatrixXd lam = covar.llt().matrixU();
+	lam.transposeInPlace();
+	MatrixXd lambda_mu_prod=lambda_m*mu_m;
+
+	for (int i=0;i<num_m;i++){
+		//observed data column
+		VectorXd rr = X.col(I[i]).array();
+
+		//equation 13
+		VectorXd mean_m = covar * (alpha*(w1_P1_sample.transpose()*rr)+lambda_mu_prod);
+		//multivariate normal with mean mean_m and cholesky decomposed variance lam
+		MatrixXd normV(num_feat,1);
+		for (int j=0;j<num_feat;j++){
+			normV(j,0)=rnorm(0,1);
+		}
+		w1_M1_sample.row(I[i]) = (lam*normV+mean_m).transpose();
+	}
+
+	return 0;
+}
+
+double sample_ind_missing (double Xglobalmean,const MatrixXd& w1_M1_sample, MatrixXd& w1_P1_sample,const MatrixXd& Indicator, const MatrixXd& X,int num_p,int num_m,int num_feat,const MatrixXd& lambda_u,const VectorXd& mu_u,const VectorXd& alpha)
+{
+	//random shuffling of individuals.
 	std::vector<int> I;
 	for (int i=0; i<num_p; ++i) {
 		I.push_back(i);
@@ -211,22 +208,76 @@ double sample_SNP (const MatrixXd& w1_P1_sample, MatrixXd& w1_M1_sample, const M
 
 	std::random_shuffle(I.begin(), I.end());
 
-	// Gibbs updates over SNP latent vectors given hyperparams.
-	// Infer posterior distribution over SNP latent vectors (equation 11).
-	/*
-	cout<<"lambda_m"<<endl;
-	cout<<lambda_m<<endl;
-	cout<<"mu_m"<<endl;
-	cout<<lambda_m<<endl;
-	*/
+	// Gibbs updates over individual latent vectors given hyperparams.
+	// Infer posterior distribution over individual latent vectors (equation 11).
+
+
 	for (int i=0;i<num_p;i++){
-		//observed data column
-		VectorXd rr = X.col(I[i]);
+		//observed data row
+		VectorXd rr = X.row(I[i]).array();
 		//equation 12
-		MatrixXd covar = ((alpha*(w1_P1_sample.transpose()*w1_P1_sample)+lambda_m));
+		MatrixXd covarprod(num_feat,num_feat);
+		VectorXd obsprod(num_feat);
+		MatrixXd lambda_mu_prod=lambda_u*mu_u;
+
+		covarprod.setZero();
+		obsprod.setZero();
+		for (int j=0;j<num_m;j++){
+			covarprod=covarprod + (w1_M1_sample.row(j).transpose()*w1_M1_sample.row(j))*Indicator(i,j);
+			obsprod=obsprod + (w1_M1_sample.row(j).transpose()*rr[j])*Indicator(i,j);
+		}
+
+		MatrixXd covar = alpha[i]*covarprod+lambda_u;
 		covar=covar.inverse();
 		//equation 13
-		VectorXd mean_m = covar * (alpha*(w1_P1_sample.transpose()*rr)+lambda_m*mu_m);
+		VectorXd mean_u = covar * (alpha[i]*obsprod+lambda_mu_prod);
+		//multivariate normal with mean mean_u and cholesky decomposed variance lam
+		MatrixXd lam = covar.llt().matrixU();
+		lam.transposeInPlace();
+
+		MatrixXd normV(num_feat,1);
+		for (int j=0;j<num_feat;j++){
+			normV(j,0)=rnorm(0,1);
+		}
+
+		w1_P1_sample.row(I[i]) = (lam*normV+mean_u).transpose();
+
+	}
+
+	return 0;
+}
+
+double sample_SNP_missing (double Xglobalmean,const MatrixXd& w1_P1_sample, MatrixXd& w1_M1_sample, const MatrixXd& Indicator,const MatrixXd& X,int num_p,int num_m,int num_feat,const MatrixXd& lambda_m,const VectorXd& mu_m,double alpha)
+{
+	//random shuffling of markers.
+	std::vector<int> I;
+	for (int i=0; i<num_m; ++i) {
+		I.push_back(i);
+	}
+
+	std::random_shuffle(I.begin(), I.end());
+
+
+	for (int i=0;i<num_m;i++){
+		//observed data column
+		VectorXd rr = X.col(I[i]).array();
+		//equation 12
+		MatrixXd covarprod(num_feat,num_feat);
+		VectorXd obsprod(num_feat);
+		MatrixXd lambda_mu_prod=lambda_m*mu_m;
+
+		covarprod.setZero();
+		obsprod.setZero();
+		for (int j=0;j<num_p;j++){
+			covarprod=covarprod + (w1_P1_sample.row(j).transpose()*w1_P1_sample.row(j))*Indicator(j,i);
+			obsprod=obsprod + (w1_P1_sample.row(j).transpose()*rr[j])*Indicator(j,i);
+		}
+
+		MatrixXd covar = alpha*covarprod+lambda_m;
+		covar=covar.inverse();
+
+		//equation 13
+		VectorXd mean_m= covar * (alpha*obsprod+lambda_mu_prod);
 		//multivariate normal with mean mean_m and cholesky decomposed variance lam
 		MatrixXd lam = covar.llt().matrixU();
 		lam.transposeInPlace();

@@ -34,16 +34,18 @@ int main(int argc, char *argv[])
 
 	po::options_description desc("Options");
 	desc.add_options()
-								("M", po::value<int>()->required(), "No. of markers")
-								("N", po::value<int>()->required(), "No. of individuals")
-								("num_feat", po::value<int>()->default_value(3), "No. of factors")
-								("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
-								("scale", po::value<int>()->default_value(1), "Scaling")
-								("burnin", po::value<int>()->default_value(10), "No. burnin iterations")
-								("b0_m", po::value<double>()->default_value(2), "b0_m")
-								("b0_u", po::value<double>()->default_value(2), "b0_u")
-								("input", po::value<std::string>()->required(),"Input filename")
-								("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename");
+	("M", po::value<int>()->required(), "No. of markers")
+	("N", po::value<int>()->required(), "No. of individuals")
+	("num_feat", po::value<int>()->default_value(3), "No. of factors")
+	("iter", po::value<int>()->default_value(100), "No. of Gibbs iterations")
+	("burnin", po::value<int>()->default_value(10), "No. burnin iterations")
+	("b0_m", po::value<double>()->default_value(2), "b0_m")
+	("b0_u", po::value<double>()->default_value(2), "b0_u")
+	("input", po::value<std::string>()->required(),"Input filename")
+	("out", po::value<std::string>()->default_value("BayesFactors_out"),"Output filename")
+	("scale", "perform scaling")
+	("missing", "missing data included?")
+	;
 
 	srand(time(0));
 
@@ -56,7 +58,6 @@ int main(int argc, char *argv[])
 	int num_feat=vm["num_feat"].as<int>();
 	int iter=vm["iter"].as<int>();
 	int burnin=vm["burnin"].as<int>();
-	int scale=vm["scale"].as<int>();
 	double b0_m=vm["b0_m"].as<double>();
 	double b0_u=vm["b0_u"].as<double>();
 	string input=vm["input"].as<string>();
@@ -70,6 +71,7 @@ int main(int argc, char *argv[])
 	timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
 	cout << ctime(&timenow) << endl;
 
+//Read Genotype Matrix
 	ifstream f1(input+".X");
 	if (f1){
 		for (int i = 0; i < N; i++)
@@ -88,12 +90,73 @@ int main(int argc, char *argv[])
 		cout<<"the "+input+".X"+" file does not exist/cannot be opened!"<<endl;
 		return 0;
 	}
-	if (scale==1){
-		//scale matrix X (genotype matrix)
-		RowVectorXd mean = X.colwise().mean();
-		RowVectorXd sd = ((X.rowwise() - mean).array().square().colwise().sum() / (X.rows() - 1)).sqrt();
-		X = (X.rowwise() - mean).array().rowwise() / sd.array();
+//Read missing data indicator matrix
+	MatrixXd Indicator(N,M);
+	if (vm.count("missing")) {
+	ifstream f2(input+".Indicator");
+	if (f2){
+		for (int i = 0; i < N; i++)
+		{
+			for (int j = 0; j < M; j++)
+			{
+				f2 >> Indicator(i,j);
+				//cout<<X(i,j)<<endl;
+			}
+		}
+		f2.close();
+		cout<<"finished reading matrix Indicator!"<<endl;
+		timenow = chrono::system_clock::to_time_t(chrono::system_clock::now());
+		cout << ctime(&timenow) << endl;
+	}else{
+		cout<<"the "+input+".Indicator"+" file does not exist/cannot be opened!"<<endl;
+		return 0;
 	}
+	}
+
+	//Normalize matrix X
+	if (vm.count("scale")) {
+		if (vm.count("missing")) {
+			X=X.cwiseProduct(Indicator);
+			RowVectorXd mean = X.colwise().sum().array()/Indicator.colwise().sum().array();
+			RowVectorXd sqsum(M);
+			RowVectorXd sd(M);
+			sqsum.setZero();
+			sd.setZero();
+			//to calculate sd I add the squared deviations only for non-missing entries as specified in the Indicator matrix
+			for (int j = 0; j < M; j++)
+			{
+				for (int i = 0; i < N; i++)
+				{
+					sqsum[j] +=pow((X(i,j)-mean[j]),2)*Indicator(i,j);
+				}
+				sd[j]=sqrt((sqsum[j]/(Indicator.col(j).sum() - 1)));
+			}
+			//Divide by sd but make sure that sd!=0
+//Should be possible to integrate following code so that only one loop through M is done
+			for (int j = 0; j < M; j++)
+			{
+				if (sd[j]==0){
+					for (int i = 0; i < N; i++)
+					{
+						X(i,j) -= mean[j];
+					}
+				}else{
+					for (int i = 0; i < N; i++)
+					{
+						X(i,j) -= mean[j];
+						X(i,j) /= sd[j];
+					}
+				}
+			}
+		}else{
+
+			RowVectorXd mean = X.colwise().mean();
+			RowVectorXd sd = ((X.rowwise() - mean).array().square().colwise().sum() / (X.rows() - 1)).sqrt();
+			X = (X.rowwise() - mean).array().rowwise() / sd.array();
+		}
+	}
+
+	double Xglobalmean=X.mean();
 	//Factor analysis
 	//Initialization of latent variables. It can be done with ML estimates. Here its done just by sampling normal deviates.
 	MatrixXd w1_M1_sample(M,num_feat);
@@ -136,12 +199,10 @@ int main(int argc, char *argv[])
 	mu_u.setZero();
 	mu0_u.setZero();
 
-
 	int df_m=num_feat;
 	int df_u=num_feat;
 
-	//residual variance
-
+	//Initialization of residual variance
 	MatrixXd epsilon_t(N,M);
 	double Xm=X.mean();
 	epsilon_t=X-w1_P1_sample*w1_M1_sample.transpose();
@@ -149,6 +210,13 @@ int main(int argc, char *argv[])
 	double sigma2_e=sample_residual_variance_gamma(epsilon_t);
 	VectorXd sigma2_e_rowvec(N);
 	sample_residual_row_variance_gamma(epsilon_t, sigma2_e_rowvec);
+
+	//Intialize running means of latent variables
+	MatrixXd Ew1_M1_sample(M,num_feat);
+	MatrixXd Ew1_P1_sample(N,num_feat);
+
+	Ew1_M1_sample=w1_M1_sample;
+	Ew1_P1_sample=w1_P1_sample;
 
 
 	//create folder to put output
@@ -169,6 +237,7 @@ int main(int argc, char *argv[])
 
 	ofstream file_ElatentInd;
 	ofstream file_ElatentSNPs;
+
 	//clear files for hyper-parameters
 	file_lambda_m.open ("BayesFactors_out/"+output+"_lambda_m.txt");
 	file_lambda_u.open ("BayesFactors_out/"+output+"_lambda_u.txt");
@@ -192,8 +261,10 @@ int main(int argc, char *argv[])
 	file_lambda_u.open ("BayesFactors_out/"+output+"_lambda_u.txt", std::ios_base::app);
 	file_mu_m.open ("BayesFactors_out/"+output+"_mu_m.txt", std::ios_base::app);
 	file_mu_u.open ("BayesFactors_out/"+output+"_mu_u.txt", std::ios_base::app);
-	cout<<"Starting burning "<<burnin<<" iterations"<<endl;
+
+
 	//Burnin iterations
+	cout<<"Starting burning "<<burnin<<" iterations"<<endl;
 	for (int i = 0; i < burnin; i++)
 	{
 		//update residual variance
@@ -202,30 +273,26 @@ int main(int argc, char *argv[])
 		sample_residual_row_variance_gamma(epsilon_t, sigma2_e_rowvec);
 
 		//update SNP hyperparameters
-		sample_hyper(w1_M1_sample,WI_m,b0_m,mu0_m,df_m,mu_m,lambda_m);
+		//sample_hyper(w1_M1_sample,WI_m,b0_m,mu0_m,df_m,mu_m,lambda_m);
 		//update individual hyperparameters
 		sample_hyper(w1_P1_sample,WI_u,b0_u,mu0_u,df_u,mu_u,lambda_u);
 		//update individual parameters
-		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e_rowvec);
+		//sample_ind (Xglobalmean,w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e_rowvec);
+		sample_ind_missing (Xglobalmean,w1_M1_sample,w1_P1_sample,Indicator,X,N,M,num_feat,lambda_u,mu_u,sigma2_e_rowvec);
+		sample_SNP_missing (Xglobalmean,w1_P1_sample,w1_M1_sample,Indicator,X,N,M,num_feat,lambda_m,mu_m,sigma2_e);
 		//update SNP parameters
-		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,sigma2_e);
+		//sample_SNP (Xglobalmean,w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,sigma2_e);
 		//update rows and columns together
 		//sample_ind_SNP (w1_M1_sample,w1_P1_sample, X,N,M,num_feat,lambda_u,mu_u,lambda_m,mu_m,sigma2_e);
 
 
 	}
+
+	//Sampling iterations
 	cout<<"Finished burnin, starting sampling "<<iter<<" iterations" <<endl;
-	//Running means of latent variables
-	MatrixXd Ew1_M1_sample(M,num_feat);
-	MatrixXd Ew1_P1_sample(N,num_feat);
 
-	Ew1_M1_sample=w1_M1_sample;
-	Ew1_P1_sample=w1_P1_sample;
-
-	//sampling iterations
 	for (int i = 0; i < iter; i++)
 	{
-		//cout<<iter<<"\t"<<i<<endl;
 
 		//write out for each iteration the factors
 		file_latentInd.open ("BayesFactors_out/"+output+".iter"+to_string(i+1)+".factors");
@@ -277,20 +344,23 @@ int main(int argc, char *argv[])
 		sample_residual_row_variance_gamma(epsilon_t, sigma2_e_rowvec);
 
 		//update SNP hyperparameters
-		sample_hyper(w1_M1_sample,WI_m,b0_m,mu0_m,df_m,mu_m,lambda_m);
+		//sample_hyper(w1_M1_sample,WI_m,b0_m,mu0_m,df_m,mu_m,lambda_m);
 		//update individual hyperparameters
 		sample_hyper(w1_P1_sample,WI_u,b0_u,mu0_u,df_u,mu_u,lambda_u);
 
 		//update individual parameters
-		sample_ind (w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e_rowvec);
+		//sample_ind (Xglobalmean,w1_M1_sample,w1_P1_sample,X,N,num_feat,lambda_u,mu_u,sigma2_e_rowvec);
+		sample_ind_missing (Xglobalmean,w1_M1_sample,w1_P1_sample,Indicator,X,N,M,num_feat,lambda_u,mu_u,sigma2_e_rowvec);
+		sample_SNP_missing (Xglobalmean,w1_P1_sample,w1_M1_sample,Indicator,X,N,M,num_feat,lambda_m,mu_m,sigma2_e);
 		//update SNP parameters
-		sample_SNP (w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,sigma2_e);
+		//sample_SNP (Xglobalmean,w1_P1_sample,w1_M1_sample,X,M,num_feat,lambda_m,mu_m,sigma2_e);
 
 		//running average has +1 value (1 from burnin)
 		Ew1_M1_sample=Ew1_M1_sample+(w1_M1_sample-Ew1_M1_sample)/(i+2);
 		Ew1_P1_sample=Ew1_P1_sample+(w1_P1_sample-Ew1_P1_sample)/(i+2);
 
 	}
+
 	//write-out means for latent variables
 	file_ElatentInd.open ("BayesFactors_out/"+output+"_Efactors.txt");
 	file_ElatentSNPs.open ("BayesFactors_out/"+output+"_Escores.txt");
