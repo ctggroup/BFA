@@ -46,17 +46,17 @@ Possible options:
 --burnin: No. burnin iterations (Default: 10)   
 --num_feat : No. of estimated factors (Default:3)   
 --output : Results of the gibbs sampler are outputed using the tag provided here (Default:"BayesFactors_out"). The program will create a folder with this tag and then output the estimated factors and scores in that folder for every Gibbs iteration.   
---b0_m : Shrinkage constant for prior of column hyper-parameters (Default: 2)
---b0_u : Shrinkage constant for prior of row hyper-parameters (Default: 2)
---scale : Flag to substract mean and divide by standard deviation for each column of the input matrix before analysis.
---miss : Flag to indicate that there is missing data. The data that should be masked as "missing" is specified with an Indicator matrix (NxM) that contains 1 or 0. The file must have the suffix ".Indicator" after the tag provided with input. 
+--b0_m : Shrinkage constant for prior of column hyper-parameters (Default: 2)   
+--b0_u : Shrinkage constant for prior of row hyper-parameters (Default: 2)   
+--scale : Flag to substract mean and divide by standard deviation for each column of the input matrix before analysis.   
+--miss : Flag to indicate that there is missing data. The data that should be masked as "missing" is specified with an Indicator matrix (NxM) that contains 1 or 0. The file must have the suffix ".Indicator" after the tag provided with input.   
 
 ## Examples   
 
-### Example 1
-./BayesFactors --input inputfile --N 3000 --M 1269 --burnin 100 --iter 100 --num_feat 3 --scale
+### Example 1   
+./BayesFactors --input inputfile --N 3000 --M 1269 --burnin 100 --iter 100 --num_feat 3 --scale   
 
 The genotype matrix is assumed to have the suffix ".X". So in this example the program expects a file called inputfile.X to read in the genotype matrix.  
 
-### Example 2
-./BayesFactors --input inputfile --N 3000 --M 1269 --burnin 100 --iter 100 --num_feat 5 --scale --miss
+### Example 2   
+./BayesFactors --input inputfile --N 3000 --M 1269 --burnin 100 --iter 100 --num_feat 5 --scale --miss   
